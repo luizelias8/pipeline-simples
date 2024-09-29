@@ -2,8 +2,8 @@ import configparser
 import requests
 import pandas as pd
 import datetime
-import mysql.connector
-from mysql.connector import Error
+from sqlalchemy import create_engine
+from sqlalchemy.exc import SQLAlchemyError
 
 # Função para ler o arquivo .ini e obter as configurações
 def ler_configuracoes(arquivo_config):
@@ -45,32 +45,22 @@ def transformar_dados(dados):
 # Função para carregar dados no MySQL
 def carregar_dados_mysql(df, tabela, configuracoes_mysql):
     try:
-        # Conexão com o banco de dados MySQL usando os dados do arquivo .ini
-        conexao = mysql.connector.connect(
-            host=configuracoes_mysql['servidor'],
-            user=configuracoes_mysql['usuario'],
-            password=configuracoes_mysql['senha'],
-            database=configuracoes_mysql['banco']
-        )
-        if conexao.is_connected():
-            cursor = conexao.cursor()
-            # Itera sobre cada linha do DataFrame e insere no banco de dados
-            for _, linha in df.iterrows(): # _ é uma convenção em Python que significa que o valor não será utilizado. Nesse caso, estamos ignorando o índice da linha.
-                query = f"""
-                    INSERT INTO {tabela} (cidade, temperatura, umidade, descricao, data_hora)
-                    VALUES (%s, %s, %s, %s, %s)
-                """
-                # Define os valores a serem inseridos no banco
-                valores = (linha['cidade'], linha['temperatura'], linha['umidade'], linha['descricao'], linha['data_hora'])
-                cursor.execute(query, valores) # Executa a inserção no banco
-            conexao.commit() # Confirma a inserção
-            print(f'{cursor.rowcount} registros inseridos com sucesso.')
-    except Error as e:
-        print(f'Erro ao conectar ao MySQL: {e}')
-    finally:
-        if conexao.is_connected():
-            cursor.close()
-            conexao.close()
+        # Criar a string de conexão com o banco de dados MySQL usando SQLAlchemy
+        usuario = configuracoes_mysql['usuario']
+        senha = configuracoes_mysql['senha']
+        servidor = configuracoes_mysql['servidor']
+        banco = configuracoes_mysql['banco']
+        url_conexao = f'mysql+pymysql://{usuario}:{senha}@{servidor}/{banco}'
+
+        # Criar o engine de conexão com o banco de dados
+        engine = create_engine(url_conexao)
+
+        # Carregar os dados no MySQL
+        df.to_sql(tabela, con=engine, if_exists='append', index=False)
+        print(f'{len(df)} registros inseridos com sucesso.')
+
+    except SQLAlchemyError as e:
+        print(f'Erro ao conectar ao MySQL usando SQLAlchemy: {e}')
 
 # Função principal do pipeline
 def executar_pipeline():
